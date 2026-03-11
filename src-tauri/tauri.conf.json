@@ -1,0 +1,65 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "OpenClaw Desktop Manager",
+  "version": "1.0.0",
+  "identifier": "com.openclaw.desktop-manager",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "OpenClaw Desktop Manager",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": [
+        {
+          "identifier": "default",
+          "windows": ["main"],
+          "permissions": [
+            "core:default",
+            "shell:allow-open",
+            "fs:allow-read",
+            "fs:allow-write",
+            "fs:allow-read-dir",
+            "fs:allow-copy-file",
+            "fs:allow-remove",
+            "dialog:allow-open",
+            "dialog:allow-save",
+            "os:allow-platform",
+            "os:allow-version",
+            "os:allow-os-type",
+            "process:allow-restart",
+            "process:allow-exit"
+          ]
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "OpenClaw 图形化管理工具",
+    "longDescription": "一个面向非技术用户的跨平台桌面应用，用图形界面完成 OpenClaw 的安装、配置、修复、备份、迁移、升级与卸载"
+  }
+}
