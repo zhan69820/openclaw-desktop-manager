@@ -57,16 +57,16 @@ pub async fn run_preflight_check(state: State<'_, AppState>) -> Result<Preflight
 
 #[tauri::command]
 pub fn start_installation(
-    config: InstallConfig,
     state: State<AppState>,
+    config: InstallConfig,
 ) -> Result<(), String> {
     state.installer_service.start_installation(config)
 }
 
 #[tauri::command]
 pub async fn run_install(
-    config: InstallConfig,
     state: State<'_, AppState>,
+    config: InstallConfig,
 ) -> Result<(), String> {
     // Use spawn_blocking to run the synchronous install in a separate thread
     let installer = Arc::clone(&state.installer_service);
@@ -125,7 +125,7 @@ pub fn docker_restart(state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn docker_logs(lines: u32, state: State<AppState>) -> Result<Vec<String>, String> {
+pub fn docker_logs(state: State<AppState>, lines: u32) -> Result<Vec<String>, String> {
     state.docker_service.get_logs(lines)
 }
 
@@ -135,7 +135,7 @@ pub async fn docker_health(state: State<'_, AppState>) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub fn docker_uninstall(remove_data: bool, state: State<AppState>) -> Result<(), String> {
+pub fn docker_uninstall(state: State<AppState>, remove_data: bool) -> Result<(), String> {
     state.docker_service.uninstall(remove_data)
 }
 
@@ -152,17 +152,17 @@ pub fn get_models(state: State<AppState>) -> Result<Vec<ModelConfig>, String> {
 }
 
 #[tauri::command]
-pub fn add_model(model: ModelConfig, state: State<AppState>) -> Result<(), String> {
+pub fn add_model(state: State<AppState>, model: ModelConfig) -> Result<(), String> {
     state.config_service.add_model(model)
 }
 
 #[tauri::command]
-pub fn update_model(id: String, model: ModelConfig, state: State<AppState>) -> Result<(), String> {
+pub fn update_model(state: State<AppState>, id: String, model: ModelConfig) -> Result<(), String> {
     state.config_service.update_model(&id, model)
 }
 
 #[tauri::command]
-pub fn remove_model(id: String, state: State<AppState>) -> Result<(), String> {
+pub fn remove_model(state: State<AppState>, id: String) -> Result<(), String> {
     state.config_service.remove_model(&id)
 }
 
@@ -172,17 +172,17 @@ pub fn get_channels(state: State<AppState>) -> Result<Vec<ChannelConfig>, String
 }
 
 #[tauri::command]
-pub fn add_channel(channel: ChannelConfig, state: State<AppState>) -> Result<(), String> {
+pub fn add_channel(state: State<AppState>, channel: ChannelConfig) -> Result<(), String> {
     state.config_service.add_channel(channel)
 }
 
 #[tauri::command]
-pub fn update_channel(id: String, channel: ChannelConfig, state: State<AppState>) -> Result<(), String> {
+pub fn update_channel(state: State<AppState>, id: String, channel: ChannelConfig) -> Result<(), String> {
     state.config_service.update_channel(&id, channel)
 }
 
 #[tauri::command]
-pub fn remove_channel(id: String, state: State<AppState>) -> Result<(), String> {
+pub fn remove_channel(state: State<AppState>, id: String) -> Result<(), String> {
     state.config_service.remove_channel(&id)
 }
 
@@ -192,7 +192,7 @@ pub fn get_settings(state: State<AppState>) -> Result<AppSettings, String> {
 }
 
 #[tauri::command]
-pub fn update_settings(settings: AppSettings, state: State<AppState>) -> Result<(), String> {
+pub fn update_settings(state: State<AppState>, settings: AppSettings) -> Result<(), String> {
     state.config_service.update_settings(settings)
 }
 
@@ -222,28 +222,28 @@ pub fn get_backups(state: State<AppState>) -> Result<Vec<BackupInfo>, String> {
 
 #[tauri::command]
 pub fn create_backup(
+    state: State<AppState>,
     backup_type: String,
     description: Option<String>,
-    state: State<AppState>,
 ) -> Result<BackupInfo, String> {
     state.backup_service.create_backup(&backup_type, description)
 }
 
 #[tauri::command]
-pub fn restore_backup(backup_id: String, state: State<AppState>) -> Result<(), String> {
+pub fn restore_backup(state: State<AppState>, backup_id: String) -> Result<(), String> {
     state.backup_service.restore_backup(&backup_id)
 }
 
 #[tauri::command]
-pub fn delete_backup(backup_id: String, state: State<AppState>) -> Result<(), String> {
+pub fn delete_backup(state: State<AppState>, backup_id: String) -> Result<(), String> {
     state.backup_service.delete_backup(&backup_id)
 }
 
 #[tauri::command]
 pub fn export_backup(
+    state: State<AppState>,
     backup_id: String,
     destination: String,
-    state: State<AppState>,
 ) -> Result<(), String> {
     let dest_path = std::path::PathBuf::from(destination);
     state.backup_service.export_backup(&backup_id, &dest_path)
@@ -251,9 +251,9 @@ pub fn export_backup(
 
 #[tauri::command]
 pub fn import_backup(
+    state: State<AppState>,
     source: String,
     description: Option<String>,
-    state: State<AppState>,
 ) -> Result<BackupInfo, String> {
     let source_path = std::path::PathBuf::from(source);
     state.backup_service.import_backup(&source_path, description)
