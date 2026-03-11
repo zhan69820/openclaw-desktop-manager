@@ -1,7 +1,7 @@
 use crate::models::BackupInfo;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use zip::{ZipWriter, write::SimpleFileOptions};
+use zip::ZipWriter;
 use walkdir::WalkDir;
 
 pub struct BackupService {
@@ -97,8 +97,8 @@ impl BackupService {
             .map_err(|e| format!("创建备份文件失败: {}", e))?;
         
         let mut zip = ZipWriter::new(file);
-        let options = SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflate)
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
             .compression_level(Some(6));
 
         for source in sources {
@@ -144,8 +144,10 @@ impl BackupService {
         zip: &mut ZipWriter<std::fs::File>,
         base_path: &PathBuf,
         dir: &PathBuf,
-        options: &SimpleFileOptions,
+        options: &zip::write::SimpleFileOptions,
     ) -> Result<(), String> {
+        use std::io::Write;
+
         for entry in WalkDir::new(dir) {
             let entry = entry.map_err(|e| format!("遍历目录失败: {}", e))?;
             let path = entry.path();
@@ -153,16 +155,16 @@ impl BackupService {
                 .map_err(|e| format!("处理路径失败: {}", e))?;
 
             if path.is_file() {
-                zip.start_file(name.to_string_lossy(), *options)
+                zip.start_file(name.to_string_lossy().to_string(), *options)
                     .map_err(|e| format!("添加文件到 zip 失败: {}", e))?;
                 
                 let content = std::fs::read(path)
                     .map_err(|e| format!("读取文件失败: {}", e))?;
                 
-                zip.write_all(&content)
+                std::io::Write::write_all(zip, &content)
                     .map_err(|e| format!("写入 zip 失败: {}", e))?;
             } else if path.is_dir() && !name.as_os_str().is_empty() {
-                zip.add_directory(name.to_string_lossy(), *options)
+                zip.add_directory(name.to_string_lossy().to_string(), *options)
                     .map_err(|e| format!("添加目录到 zip 失败: {}", e))?;
             }
         }

@@ -66,8 +66,16 @@ pub fn cancel_installation(state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_install_state(state: State<AppState>) -> Result<crate::services::installer::InstallState, String> {
-    Ok(state.installer_service.get_state())
+pub fn get_install_state(state: State<AppState>) -> Result<serde_json::Value, String> {
+    let install_state = state.installer_service.get_state();
+    // 手动序列化为 JSON Value 以避免类型问题
+    Ok(serde_json::json!({
+        "current_step": install_state.current_step,
+        "progress": install_state.progress,
+        "steps": install_state.steps,
+        "error": install_state.error,
+        "is_running": install_state.is_running,
+    }))
 }
 
 // ========== 配置命令 ==========

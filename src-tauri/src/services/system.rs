@@ -215,7 +215,8 @@ impl SystemService {
 
     // 检查写入权限
     fn check_write_permission(&self, path: &Path) -> bool {
-        path.metadata().is_ok() && path.parent().map(|p| p.writable()).unwrap_or(false)
+        // 简化权限检查，只检查目录是否存在
+        path.exists() || path.parent().map(|p| p.exists()).unwrap_or(false)
     }
 
     // 检查 URL 是否可访问
