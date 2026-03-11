@@ -279,12 +279,17 @@ impl ConfigService {
 
     // 验证渠道配置
     fn validate_channel(&self, channel: &ChannelConfig) -> Result<(), String> {
-        if channel.channel_type.is_empty() {
-            return Err("渠道类型不能为空".to_string());
+        if channel.name.is_empty() {
+            return Err("渠道名称不能为空".to_string());
         }
         
-        if channel.token.is_empty() {
-            return Err("Token 不能为空".to_string());
+        if channel.channel_type == 0 {
+            return Err("渠道类型不能为空".to_string());
+        }
+
+        // Ollama (type 31) doesn't need a key
+        if channel.key.is_empty() && channel.channel_type != 31 {
+            return Err("API Key 不能为空".to_string());
         }
         
         Ok(())

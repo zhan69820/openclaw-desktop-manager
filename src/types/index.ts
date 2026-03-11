@@ -93,25 +93,32 @@ export interface ModelConfig {
   isDefault: boolean
 }
 
-// 渠道类型
-export type ChannelType =
-  | "telegram"
-  | "discord"
-  | "slack"
-  | "whatsapp"
-  | "web"
+// one-api 渠道类型定义
+// 渠道类型 ID 对应表:
+// 1: OpenAI, 2: API2D, 3: Azure, 4: Azure OpenAI, 5: 自定义
+// 6: ChatGLM, 7: PaLM-2, 8: Baidu, 9: 自定义渠道, 10: 百度文心 V2
+// 15: Anthropic, 16: 百度文心, 17: 智谱AI, 18: 通义千问
+// 19: 讯飞星火, 20: 360智脑, 21: OpenRouter, 22: AI Proxy
+// 23: API2GPT, 24: 腾讯混元, 25: Google Gemini, 26: Moonshot
+// 27: 百川智能, 28: MiniMax, 29: Mistral, 30: Groq
+// 31: Ollama, 32: 零一万物, 33: 阶跃星辰, 34: AWS Claude
+// 35: Coze, 36: Cohere, 37: DeepSeek, 38: Cloudflare
+// 40: Together AI, 41: 字节跳动/豆包, 45: 硅基流动
+// 46: xAI/Grok, 48: 百度千帆 V2, 49: 讯飞星火 V2
 
-// 渠道配置
+// AI 渠道配置 (对应 one-api/new-api 的 channel 表)
 export interface ChannelConfig {
   id: string
-  type: ChannelType
-  enabled: boolean
-  token: string
-  proxy?: string
-  allowGroup: boolean
-  allowDM: boolean
-  defaultBehavior: "respond" | "ignore" | "mention_only"
-  webhookUrl?: string
+  name: string // 显示名称
+  type: number // one-api 渠道类型 ID
+  key: string // API key (格式因提供商而异)
+  baseUrl?: string // 可选自定义 base URL
+  models: string // 逗号分隔的模型列表
+  modelMapping?: string // JSON 字符串，模型名称映射
+  group: string // 分组，默认 "default"
+  priority: number // 优先级
+  weight: number // 权重
+  enabled: boolean // 是否启用
 }
 
 // OpenClaw 运行状态

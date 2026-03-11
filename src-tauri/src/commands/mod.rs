@@ -5,6 +5,7 @@ use crate::services::installer::InstallerService;
 use crate::services::config::ConfigService;
 use crate::services::health::HealthService;
 use crate::services::backup::BackupService;
+use crate::services::docker::DockerService;
 use std::sync::Arc;
 
 // 应用状态
@@ -14,6 +15,7 @@ pub struct AppState {
     pub config_service: Arc<ConfigService>,
     pub health_service: Arc<HealthService>,
     pub backup_service: Arc<BackupService>,
+    pub docker_service: Arc<DockerService>,
 }
 
 impl AppState {
@@ -24,6 +26,7 @@ impl AppState {
             config_service: Arc::new(ConfigService::new()),
             health_service: Arc::new(HealthService::new()),
             backup_service: Arc::new(BackupService::new()),
+            docker_service: Arc::new(DockerService::new()),
         }
     }
 }
@@ -61,6 +64,21 @@ pub fn start_installation(
 }
 
 #[tauri::command]
+pub async fn run_install(
+    config: InstallConfig,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    // Use spawn_blocking to run the synchronous install in a separate thread
+    let installer = Arc::clone(&state.installer_service);
+    
+    tokio::task::spawn_blocking(move || {
+        installer.run_install(config)
+    })
+    .await
+    .map_err(|e| format!("安装任务执行失败: {}", e))?
+}
+
+#[tauri::command]
 pub fn cancel_installation(state: State<AppState>) -> Result<(), String> {
     state.installer_service.cancel_installation()
 }
@@ -68,14 +86,62 @@ pub fn cancel_installation(state: State<AppState>) -> Result<(), String> {
 #[tauri::command]
 pub fn get_install_state(state: State<AppState>) -> Result<serde_json::Value, String> {
     let install_state = state.installer_service.get_state();
-    // 手动序列化为 JSON Value 以避免类型问题
+    // Manual serialization to include logs
     Ok(serde_json::json!({
         "current_step": install_state.current_step,
         "progress": install_state.progress,
         "steps": install_state.steps,
         "error": install_state.error,
         "is_running": install_state.is_running,
+        "logs": install_state.logs,
     }))
+}
+
+#[tauri::command]
+pub fn get_install_logs(state: State<AppState>) -> Result<Vec<String>, String> {
+    Ok(state.installer_service.get_logs())
+}
+
+// ========== Docker 命令 ==========
+
+#[tauri::command]
+pub fn docker_status(state: State<AppState>) -> Result<ContainerStatus, String> {
+    state.docker_service.get_status()
+}
+
+#[tauri::command]
+pub fn docker_start(state: State<AppState>) -> Result<(), String> {
+    state.docker_service.start()
+}
+
+#[tauri::command]
+pub fn docker_stop(state: State<AppState>) -> Result<(), String> {
+    state.docker_service.stop()
+}
+
+#[tauri::command]
+pub fn docker_restart(state: State<AppState>) -> Result<(), String> {
+    state.docker_service.restart()
+}
+
+#[tauri::command]
+pub fn docker_logs(lines: u32, state: State<AppState>) -> Result<Vec<String>, String> {
+    state.docker_service.get_logs(lines)
+}
+
+#[tauri::command]
+pub async fn docker_health(state: State<'_, AppState>) -> Result<bool, String> {
+    state.docker_service.check_health().await
+}
+
+#[tauri::command]
+pub fn docker_uninstall(remove_data: bool, state: State<AppState>) -> Result<(), String> {
+    state.docker_service.uninstall(remove_data)
+}
+
+#[tauri::command]
+pub fn docker_check(state: State<AppState>) -> Result<crate::services::docker::DockerInfo, String> {
+    state.docker_service.check_docker()
 }
 
 // ========== 配置命令 ==========

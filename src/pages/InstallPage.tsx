@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,89 +13,137 @@ import {
   AlertCircle,
   ArrowLeft,
   RotateCcw,
-  Settings,
   Download,
   Terminal,
+  Container,
 } from "lucide-react"
+import { invoke } from "@tauri-apps/api/core"
 import { useAppStore } from "@/stores/appStore"
 import { cn } from "@/lib/utils"
-import type { InstallationState } from "@/types"
 
-const stepIcons: Record<InstallationState, React.ReactNode> = {
-  idle: null,
-  preflight_checking: <Terminal className="w-4 h-4" />,
-  privilege_resolving: <Settings className="w-4 h-4" />,
-  runtime_preparing: <Loader2 className="w-4 h-4 animate-spin" />,
-  downloading: <Download className="w-4 h-4" />,
-  installing: <Loader2 className="w-4 h-4 animate-spin" />,
-  workspace_initializing: <Loader2 className="w-4 h-4 animate-spin" />,
-  config_generating: <Settings className="w-4 h-4" />,
-  service_starting: <Loader2 className="w-4 h-4 animate-spin" />,
-  verifying: <CheckCircle2 className="w-4 h-4" />,
-  completed: <CheckCircle2 className="w-4 h-4" />,
-  failed: <XCircle className="w-4 h-4" />,
-  rollbacking: <RotateCcw className="w-4 h-4 animate-spin" />,
+interface BackendInstallState {
+  current_step: string
+  progress: number
+  steps: Array<{
+    id: string
+    name: string
+    description: string
+    status: string
+    progress: number
+    start_time: number | null
+    end_time: number | null
+    error: string | null
+  }>
+  error: string | null
+  is_running: boolean
+  logs: string[]
 }
 
 export function InstallPage() {
   const navigate = useNavigate()
   const [logs, setLogs] = useState<string[]>([])
+  const [installState, setInstallState] = useState<BackendInstallState | null>(null)
+  const [isInstalling, setIsInstalling] = useState(false)
+  const [isCompleted, setIsCompleted] = useState(false)
+  const [isFailed, setIsFailed] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const pollRef = useRef<number | null>(null)
+  const logsEndRef = useRef<HTMLDivElement>(null)
 
   const {
-    installationState,
-    installSteps,
-    installProgress,
-    installError,
     setInstallationState,
-    updateInstallStep,
     setInstallProgress,
-    setInstallError,
+    setOpenClawStatus,
   } = useAppStore()
 
-  // 模拟安装流程
-  const startInstallation = async () => {
-    setInstallationState("preflight_checking")
-    setInstallError(undefined)
-    setLogs(["开始安装流程..."])
+  // Poll installation state from backend
+  const pollState = async () => {
+    try {
+      const state = await invoke<BackendInstallState>("get_install_state")
+      setInstallState(state)
+      setLogs(state.logs || [])
 
-    // 模拟每个步骤
-    const steps: InstallationState[] = [
-      "preflight_checking",
-      "privilege_resolving",
-      "runtime_preparing",
-      "downloading",
-      "installing",
-      "workspace_initializing",
-      "config_generating",
-      "service_starting",
-      "verifying",
-    ]
-
-    for (let i = 0; i < steps.length; i++) {
-      const step = steps[i]
-      setInstallationState(step)
-      updateInstallStep(step, { status: "running", startTime: Date.now() })
-      setLogs((prev) => [...prev, `开始执行: ${getStepName(step)}`])
-
-      // 模拟进度
-      for (let progress = 0; progress <= 100; progress += 20) {
-        await new Promise((resolve) => setTimeout(resolve, 200))
-        updateInstallStep(step, { progress })
-        setInstallProgress(Math.round(((i + progress / 100) / steps.length) * 100))
+      if (state.error) {
+        setIsFailed(true)
+        setIsInstalling(false)
+        setError(state.error)
+        setInstallationState("failed")
+        stopPolling()
+      } else if (!state.is_running && state.progress >= 100) {
+        setIsCompleted(true)
+        setIsInstalling(false)
+        setInstallationState("completed")
+        setInstallProgress(100)
+        setOpenClawStatus({
+          installed: true,
+          running: true,
+          configValid: true,
+          port: 3000,
+        })
+        stopPolling()
+      } else if (state.is_running) {
+        setInstallProgress(state.progress)
       }
-
-      updateInstallStep(step, { status: "success", progress: 100, endTime: Date.now() })
-      setLogs((prev) => [...prev, `完成: ${getStepName(step)}`])
+    } catch (e) {
+      console.error("Failed to poll install state:", e)
     }
-
-    setInstallationState("completed")
-    setInstallProgress(100)
-    setLogs((prev) => [...prev, "安装完成！"])
   }
 
-  const getStepName = (stepId: InstallationState): string => {
-    const step = installSteps.find((s) => s.id === stepId)
-    return step?.name || stepId
+  const startPolling = () => {
+    if (pollRef.current) return
+    pollRef.current = window.setInterval(pollState, 1000)
+  }
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    return () => stopPolling()
+  }, [])
+
+  useEffect(() => {
+    if (logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: "smooth" })
+    }
+  }, [logs])
+
+  const startInstallation = async () => {
+    setIsInstalling(true)
+    setIsFailed(false)
+    setIsCompleted(false)
+    setError(null)
+    setLogs([])
+    setInstallationState("preflight_checking")
+
+    try {
+      // Start polling before invoking to catch early state changes
+      startPolling()
+
+      // Invoke the real backend installation
+      await invoke("run_install", {
+        config: {
+          mode: "user",
+          version: "stable",
+          custom_version: null,
+          workspace_path: "",
+          auto_start: true,
+          auto_backup: true,
+        },
+      })
+
+      // Final poll to get completion state
+      await pollState()
+    } catch (e: any) {
+      setIsFailed(true)
+      setIsInstalling(false)
+      setError(typeof e === "string" ? e : e?.message || "安装失败")
+      setInstallationState("failed")
+      stopPolling()
+    }
   }
 
   const getStepStatusIcon = (status: string) => {
@@ -113,9 +161,10 @@ export function InstallPage() {
     }
   }
 
-  const isInstalling = installationState !== "idle" && installationState !== "completed" && installationState !== "failed"
-  const isCompleted = installationState === "completed"
-  const isFailed = installationState === "failed"
+  const steps = installState?.steps || []
+  const currentStep = installState?.current_step || "idle"
+  const progress = installState?.progress || 0
+  const currentStepInfo = steps.find((s) => s.id === currentStep)
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
@@ -127,9 +176,21 @@ export function InstallPage() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold">安装 OpenClaw</h1>
-            <p className="text-muted-foreground">一键安装，自动完成所有配置</p>
+            <p className="text-muted-foreground">通过 Docker 一键安装 OpenClaw 服务</p>
           </div>
         </div>
+
+        {/* Prerequisites Info */}
+        {!isInstalling && !isCompleted && !isFailed && (
+          <Alert>
+            <Container className="h-4 w-4" />
+            <AlertTitle>安装前提</AlertTitle>
+            <AlertDescription>
+              安装 OpenClaw 需要你的电脑已安装 Docker Desktop 并确保 Docker 正在运行。
+              安装完成后，OpenClaw 将在 http://localhost:3000 上运行，默认账号 root，密码 123456。
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Main Progress Card */}
         <Card>
@@ -144,7 +205,7 @@ export function InstallPage() {
                     ? "安装过程中出现错误"
                     : isInstalling
                     ? "正在安装中，请稍候..."
-                    : "准备开始安装 OpenClaw"}
+                    : "准备开始安装 OpenClaw (Docker)"}
                 </CardDescription>
               </div>
               {isInstalling && (
@@ -172,34 +233,42 @@ export function InstallPage() {
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">总体进度</span>
-                <span className="font-medium">{installProgress}%</span>
+                <span className="font-medium">{progress}%</span>
               </div>
-              <Progress value={installProgress} className="h-2" />
+              <Progress value={progress} className="h-2" />
             </div>
 
             {/* Current Step */}
-            {isInstalling && (
+            {isInstalling && currentStepInfo && (
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  {stepIcons[installationState]}
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 </div>
                 <div className="flex-1">
-                  <p className="font-medium">
-                    {installSteps.find((s) => s.id === installationState)?.name}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {installSteps.find((s) => s.id === installationState)?.description}
-                  </p>
+                  <p className="font-medium">{currentStepInfo.name}</p>
+                  <p className="text-sm text-muted-foreground">{currentStepInfo.description}</p>
                 </div>
               </div>
             )}
 
             {/* Error Alert */}
-            {isFailed && installError && (
+            {isFailed && error && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>安装失败</AlertTitle>
-                <AlertDescription>{installError}</AlertDescription>
+                <AlertDescription className="whitespace-pre-wrap">{error}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* Success Info */}
+            {isCompleted && (
+              <Alert>
+                <CheckCircle2 className="h-4 w-4" />
+                <AlertTitle>安装成功</AlertTitle>
+                <AlertDescription>
+                  OpenClaw 已成功安装并启动。你可以通过 http://localhost:3000 访问管理界面。
+                  默认账号: root / 123456，请登录后立即修改密码。
+                </AlertDescription>
               </Alert>
             )}
 
@@ -229,10 +298,6 @@ export function InstallPage() {
                     <RotateCcw className="w-4 h-4 mr-2" />
                     重试
                   </Button>
-                  <Button variant="outline">
-                    <Settings className="w-4 h-4 mr-2" />
-                    切换安装模式
-                  </Button>
                 </>
               )}
             </div>
@@ -240,70 +305,74 @@ export function InstallPage() {
         </Card>
 
         {/* Steps Detail */}
-        <Card>
-          <CardHeader>
-            <CardTitle>详细步骤</CardTitle>
-            <CardDescription>查看每个安装步骤的状态</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {installSteps.map((step) => (
-                <div
-                  key={step.id}
-                  className={cn(
-                    "flex items-center gap-3 p-3 rounded-lg transition-colors",
-                    step.status === "running" && "bg-primary/5",
-                    step.status === "success" && "bg-green-50",
-                    step.status === "failed" && "bg-red-50"
-                  )}
-                >
-                  <div className="w-6 h-6 flex items-center justify-center">
-                    {getStepStatusIcon(step.status)}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{step.name}</span>
-                      {step.status === "success" && (
-                        <Badge variant="success" className="text-xs">完成</Badge>
-                      )}
-                      {step.status === "running" && (
-                        <Badge variant="default" className="text-xs">进行中</Badge>
+        {steps.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>详细步骤</CardTitle>
+              <CardDescription>查看每个安装步骤的状态</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {steps.map((step) => (
+                  <div
+                    key={step.id}
+                    className={cn(
+                      "flex items-center gap-3 p-3 rounded-lg transition-colors",
+                      step.status === "running" && "bg-primary/5",
+                      step.status === "success" && "bg-green-50 dark:bg-green-950/20",
+                      step.status === "failed" && "bg-red-50 dark:bg-red-950/20"
+                    )}
+                  >
+                    <div className="w-6 h-6 flex items-center justify-center">
+                      {getStepStatusIcon(step.status)}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{step.name}</span>
+                        {step.status === "success" && (
+                          <Badge variant="success" className="text-xs">完成</Badge>
+                        )}
+                        {step.status === "running" && (
+                          <Badge variant="default" className="text-xs">进行中</Badge>
+                        )}
+                        {step.status === "failed" && (
+                          <Badge variant="destructive" className="text-xs">失败</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{step.description}</p>
+                      {step.error && (
+                        <p className="text-sm text-red-500 mt-1">{step.error}</p>
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground">{step.description}</p>
                   </div>
-                  {step.progress > 0 && step.status === "running" && (
-                    <div className="w-16">
-                      <Progress value={step.progress} className="h-1" />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Logs */}
-        <Accordion type="single" collapsible className="w-full">
+        <Accordion type="single" collapsible className="w-full" defaultValue={isInstalling || isFailed ? "logs" : undefined}>
           <AccordionItem value="logs">
             <AccordionTrigger>
               <div className="flex items-center gap-2">
                 <Terminal className="w-4 h-4" />
-                查看详细日志
+                查看详细日志 ({logs.length})
               </div>
             </AccordionTrigger>
             <AccordionContent>
-              <div className="bg-muted rounded-lg p-4 font-mono text-sm space-y-1 max-h-64 overflow-y-auto">
+              <div className="bg-zinc-900 rounded-lg p-4 font-mono text-sm space-y-0.5 max-h-80 overflow-y-auto">
                 {logs.length === 0 ? (
-                  <p className="text-muted-foreground">暂无日志</p>
+                  <p className="text-zinc-500">暂无日志</p>
                 ) : (
                   logs.map((log, index) => (
-                    <div key={index} className="text-muted-foreground">
-                      <span className="text-xs text-muted-foreground/60">[{new Date().toLocaleTimeString()}]</span>{" "}
+                    <div key={index} className="text-zinc-300 leading-relaxed">
+                      <span className="text-zinc-600 select-none">{String(index + 1).padStart(3, " ")} | </span>
                       {log}
                     </div>
                   ))
                 )}
+                <div ref={logsEndRef} />
               </div>
             </AccordionContent>
           </AccordionItem>

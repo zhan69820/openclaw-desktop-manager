@@ -34,8 +34,19 @@ pub fn run() {
             run_preflight_check,
             // 安装命令
             start_installation,
+            run_install,
             cancel_installation,
             get_install_state,
+            get_install_logs,
+            // Docker 命令
+            docker_status,
+            docker_start,
+            docker_stop,
+            docker_restart,
+            docker_logs,
+            docker_health,
+            docker_uninstall,
+            docker_check,
             // 配置命令
             get_models,
             add_model,

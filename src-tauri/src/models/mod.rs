@@ -85,6 +85,18 @@ pub struct OpenClawStatus {
     pub uptime: Option<u64>,
 }
 
+// 容器状态
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContainerStatus {
+    pub installed: bool,
+    pub running: bool,
+    pub container_id: Option<String>,
+    pub image: Option<String>,
+    pub port: Option<u16>,
+    pub uptime: Option<String>,
+    pub version: Option<String>,
+}
+
 // 模型配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelConfig {
@@ -98,18 +110,20 @@ pub struct ModelConfig {
     pub is_default: bool,
 }
 
-// 渠道配置
+// 渠道配置 - Updated to match one-api channel format
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelConfig {
     pub id: String,
-    pub channel_type: String,
+    pub name: String,
+    pub channel_type: u32,  // one-api type ID
+    pub key: String,
+    pub base_url: String,
+    pub models: String,
+    pub model_mapping: String,
+    pub group: String,
+    pub priority: u32,
+    pub weight: u32,
     pub enabled: bool,
-    pub token: String,
-    pub proxy: Option<String>,
-    pub allow_group: bool,
-    pub allow_dm: bool,
-    pub default_behavior: String,
-    pub webhook_url: Option<String>,
 }
 
 // 健康检查项

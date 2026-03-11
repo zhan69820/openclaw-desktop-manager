@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,31 +9,131 @@ import {
   RotateCcw,
   Wrench,
   Archive,
-  Download,
-  FileText,
+  ExternalLink,
   Brain,
   MessageSquare,
   CheckCircle2,
   XCircle,
   AlertCircle,
   ChevronRight,
+  Loader2,
+  Globe,
 } from "lucide-react"
+import { invoke } from "@tauri-apps/api/core"
 import { useAppStore } from "@/stores/appStore"
 import { cn } from "@/lib/utils"
 
+interface ContainerStatus {
+  installed: boolean
+  running: boolean
+  container_id: string | null
+  image: string | null
+  port: number | null
+  uptime: string | null
+  version: string | null
+}
+
 export function DashboardPage() {
   const navigate = useNavigate()
-  const openclawStatus = useAppStore((state) => state.openclawStatus)
   const models = useAppStore((state) => state.models)
   const channels = useAppStore((state) => state.channels)
   const backups = useAppStore((state) => state.backups)
+  const setOpenClawStatus = useAppStore((state) => state.setOpenClawStatus)
+
+  const [containerStatus, setContainerStatus] = useState<ContainerStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   const defaultModel = models.find((m) => m.isDefault)
   const enabledChannels = channels.filter((c) => c.enabled)
   const latestBackup = backups[0]
 
+  const fetchStatus = useCallback(async () => {
+    try {
+      const status = await invoke<ContainerStatus>("docker_status")
+      setContainerStatus(status)
+      setOpenClawStatus({
+        installed: status.installed,
+        running: status.running,
+        configValid: true,
+        port: status.port || undefined,
+        version: status.version || undefined,
+      })
+    } catch (e) {
+      console.error("Failed to fetch docker status:", e)
+      setContainerStatus({
+        installed: false,
+        running: false,
+        container_id: null,
+        image: null,
+        port: null,
+        uptime: null,
+        version: null,
+      })
+    } finally {
+      setLoading(false)
+    }
+  }, [setOpenClawStatus])
+
+  useEffect(() => {
+    fetchStatus()
+    const interval = setInterval(fetchStatus, 10000)
+    return () => clearInterval(interval)
+  }, [fetchStatus])
+
+  const handleStart = async () => {
+    setActionLoading("start")
+    try {
+      await invoke("docker_start")
+      await fetchStatus()
+    } catch (e: any) {
+      alert("启动失败: " + (typeof e === "string" ? e : e?.message || "未知错误"))
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleStop = async () => {
+    setActionLoading("stop")
+    try {
+      await invoke("docker_stop")
+      await fetchStatus()
+    } catch (e: any) {
+      alert("停止失败: " + (typeof e === "string" ? e : e?.message || "未知错误"))
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleRestart = async () => {
+    setActionLoading("restart")
+    try {
+      await invoke("docker_restart")
+      await fetchStatus()
+    } catch (e: any) {
+      alert("重启失败: " + (typeof e === "string" ? e : e?.message || "未知错误"))
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const openWebUI = () => {
+    window.open("http://localhost:3000", "_blank")
+  }
+
+  const isRunning = containerStatus?.running ?? false
+  const isInstalled = containerStatus?.installed ?? false
+
   const getStatusBadge = () => {
-    if (openclawStatus.running) {
+    if (loading) {
+      return (
+        <Badge variant="secondary" className="gap-1">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          检测中
+        </Badge>
+      )
+    }
+    if (isRunning) {
       return (
         <Badge variant="success" className="gap-1">
           <CheckCircle2 className="w-3 h-3" />
@@ -40,7 +141,7 @@ export function DashboardPage() {
         </Badge>
       )
     }
-    if (openclawStatus.installed) {
+    if (isInstalled) {
       return (
         <Badge variant="warning" className="gap-1">
           <AlertCircle className="w-3 h-3" />
@@ -73,11 +174,18 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {openclawStatus.running ? "正常运行" : openclawStatus.installed ? "已停止" : "未安装"}
+              {loading ? "检测中..." : isRunning ? "正常运行" : isInstalled ? "已停止" : "未安装"}
             </div>
             <p className="text-xs text-muted-foreground">
-              {openclawStatus.version ? `版本 ${openclawStatus.version}` : "请先安装 OpenClaw"}
+              {containerStatus?.version
+                ? `镜像 ${containerStatus.image || "justsong/one-api"}`
+                : "请先安装 OpenClaw"}
             </p>
+            {containerStatus?.uptime && (
+              <p className="text-xs text-muted-foreground mt-1">
+                运行时间: {containerStatus.uptime}
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -133,36 +241,70 @@ export function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3">
-            {openclawStatus.running ? (
-              <Button variant="destructive" className="gap-2">
-                <Square className="w-4 h-4" />
+            {!isInstalled && (
+              <Button className="gap-2" onClick={() => navigate("/install")}>
+                <Play className="w-4 h-4" />
+                安装 OpenClaw
+              </Button>
+            )}
+            {isInstalled && isRunning && (
+              <Button
+                variant="destructive"
+                className="gap-2"
+                onClick={handleStop}
+                disabled={actionLoading !== null}
+              >
+                {actionLoading === "stop" ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Square className="w-4 h-4" />
+                )}
                 停止服务
               </Button>
-            ) : (
-              <Button className="gap-2">
-                <Play className="w-4 h-4" />
+            )}
+            {isInstalled && !isRunning && (
+              <Button
+                className="gap-2"
+                onClick={handleStart}
+                disabled={actionLoading !== null}
+              >
+                {actionLoading === "start" ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Play className="w-4 h-4" />
+                )}
                 启动服务
               </Button>
             )}
-            <Button variant="outline" className="gap-2">
-              <RotateCcw className="w-4 h-4" />
-              重启服务
-            </Button>
+            {isInstalled && (
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={handleRestart}
+                disabled={actionLoading !== null}
+              >
+                {actionLoading === "restart" ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="w-4 h-4" />
+                )}
+                重启服务
+              </Button>
+            )}
+            {isRunning && (
+              <Button variant="outline" className="gap-2" onClick={openWebUI}>
+                <Globe className="w-4 h-4" />
+                打开管理面板
+                <ExternalLink className="w-3 h-3" />
+              </Button>
+            )}
             <Button variant="outline" className="gap-2" onClick={() => navigate("/health")}>
               <Wrench className="w-4 h-4" />
-              一键修复
+              健康检查
             </Button>
             <Button variant="outline" className="gap-2" onClick={() => navigate("/backup")}>
               <Archive className="w-4 h-4" />
               立即备份
-            </Button>
-            <Button variant="outline" className="gap-2">
-              <Download className="w-4 h-4" />
-              检查更新
-            </Button>
-            <Button variant="outline" className="gap-2">
-              <FileText className="w-4 h-4" />
-              查看日志
             </Button>
           </div>
         </CardContent>
@@ -223,7 +365,7 @@ export function DashboardPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>渠道配置</CardTitle>
-              <CardDescription>已配置的接入渠道</CardDescription>
+              <CardDescription>已配置的 API 渠道</CardDescription>
             </div>
             <Button variant="ghost" size="sm" onClick={() => navigate("/channels")}>
               管理
@@ -250,7 +392,7 @@ export function DashboardPage() {
                       <div
                         className={cn(
                           "w-8 h-8 rounded-full flex items-center justify-center",
-                          channel.enabled ? "bg-green-100" : "bg-gray-100"
+                          channel.enabled ? "bg-green-100 dark:bg-green-950" : "bg-gray-100 dark:bg-gray-800"
                         )}
                       >
                         <MessageSquare
@@ -261,14 +403,14 @@ export function DashboardPage() {
                         />
                       </div>
                       <div>
-                        <p className="font-medium capitalize">{channel.type}</p>
+                        <p className="font-medium">{channel.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {channel.enabled ? "已启用" : "已禁用"}
+                          {channel.models.split(",").length} 个模型
                         </p>
                       </div>
                     </div>
                     <Badge variant={channel.enabled ? "success" : "secondary"}>
-                      {channel.enabled ? "运行中" : "已停止"}
+                      {channel.enabled ? "已启用" : "已禁用"}
                     </Badge>
                   </div>
                 ))}
