@@ -29,17 +29,11 @@ jobs:
       - name: Build Tauri app (Intel)
         run: npm run tauri-build -- --target x86_64-apple-darwin
 
-      - name: Rename Intel build
-        run: |
-          mkdir -p intel
-          cp src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg intel/ 2>/dev/null || \
-          cp src-tauri/target/release/bundle/dmg/*.dmg intel/ 2>/dev/null || true
-
       - name: Upload macOS Intel artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-intel
-          path: intel/*.dmg
+          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
 
   build-macos-arm:
     runs-on: macos-latest
@@ -62,17 +56,11 @@ jobs:
       - name: Build Tauri app (Apple Silicon)
         run: npm run tauri-build -- --target aarch64-apple-darwin
 
-      - name: Rename ARM build
-        run: |
-          mkdir -p arm
-          cp src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg arm/ 2>/dev/null || \
-          cp src-tauri/target/release/bundle/dmg/*.dmg arm/ 2>/dev/null || true
-
       - name: Upload macOS ARM artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-arm
-          path: arm/*.dmg
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
 
   build-windows:
     runs-on: windows-latest
@@ -97,9 +85,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-app
-          path: src-tauri/target/release/bundle/**/*.msi
+          path: src-tauri/target/release/bundle/msi/*.msi
 
-  build-linux-x64:
+  build-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -123,47 +111,14 @@ jobs:
       - name: Build Tauri app
         run: npm run tauri-build
 
-      - name: Upload Linux x64 artifact
+      - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linux-x64
-          path: src-tauri/target/release/bundle/**/*.deb
-
-  build-linux-arm:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      - name: Build Linux ARM64 in container
-        uses: uraimo/run-on-arch-action@v2
-        with:
-          arch: aarch64
-          distro: ubuntu22.04
-          githubToken: ${{ github.token }}
-          install: |
-            apt-get update
-            apt-get install -y curl wget build-essential libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
-            curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-            apt-get install -y nodejs
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          run: |
-            export PATH="$HOME/.cargo/bin:$PATH"
-            npm install
-            npm run tauri-build
-
-      - name: Upload Linux ARM artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-arm64
-          path: src-tauri/target/release/bundle/**/*.deb
+          name: linux-app
+          path: src-tauri/target/release/bundle/deb/*.deb
 
   release:
-    needs: [build-macos-intel, build-macos-arm, build-windows, build-linux-x64, build-linux-arm]
+    needs: [build-macos-intel, build-macos-arm, build-windows, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
@@ -178,8 +133,7 @@ jobs:
           for f in macos-intel/*.dmg; do [ -f "$f" ] && mv "$f" "release/OpenClaw-Desktop-Manager-macOS-Intel.dmg"; done
           for f in macos-arm/*.dmg; do [ -f "$f" ] && mv "$f" "release/OpenClaw-Desktop-Manager-macOS-AppleSilicon.dmg"; done
           for f in windows-app/*.msi; do [ -f "$f" ] && mv "$f" "release/OpenClaw-Desktop-Manager-Windows-x64.msi"; done
-          for f in linux-x64/*.deb; do [ -f "$f" ] && mv "$f" "release/OpenClaw-Desktop-Manager-Linux-x64.deb"; done
-          for f in linux-arm64/*.deb; do [ -f "$f" ] && mv "$f" "release/OpenClaw-Desktop-Manager-Linux-arm64.deb"; done
+          for f in linux-app/*.deb; do [ -f "$f" ] && mv "$f" "release/OpenClaw-Desktop-Manager-Linux-x64.deb"; done
           ls -la release/
 
       - name: Create Release
