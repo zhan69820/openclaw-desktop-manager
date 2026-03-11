@@ -62,11 +62,7 @@
     "shortDescription": "OpenClaw 图形化管理工具",
     "longDescription": "一个面向非技术用户的跨平台桌面应用，用图形界面完成 OpenClaw 的安装、配置、修复、备份、迁移、升级与卸载",
     "macOS": {
-      "frameworks": [],
-      "minimumSystemVersion": "10.13",
-      "signingIdentity": null,
-      "entitlements": null,
-      "hardenedRuntime": false
+      "minimumSystemVersion": "10.13"
     }
   }
 }
