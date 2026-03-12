@@ -64,17 +64,11 @@ pub fn start_installation(
 }
 
 #[tauri::command]
-pub async fn run_install(
+pub fn run_install(
     state: State<'_, AppState>,
     config: InstallConfig,
 ) -> Result<(), String> {
-    let installer = Arc::clone(&state.installer_service);
-    
-    tokio::task::spawn_blocking(move || {
-        installer.run_install(config)
-    })
-    .await
-    .map_err(|e| format!("安装任务执行失败: {}", e))?
+    state.installer_service.run_install(config)
 }
 
 #[tauri::command]
