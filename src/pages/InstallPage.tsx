@@ -15,7 +15,6 @@ import {
   RotateCcw,
   Download,
   Terminal,
-  Container,
 } from "lucide-react"
 import { invoke } from "@tauri-apps/api/core"
 import { useAppStore } from "@/stores/appStore"
@@ -78,7 +77,6 @@ export function InstallPage() {
           installed: true,
           running: true,
           configValid: true,
-          port: 3000,
         })
         stopPolling()
       } else if (state.is_running) {
@@ -120,7 +118,6 @@ export function InstallPage() {
     setInstallationState("preflight_checking")
 
     try {
-      // Start polling before invoking to catch early state changes
       startPolling()
 
       // Invoke the real backend installation
@@ -135,7 +132,6 @@ export function InstallPage() {
         },
       })
 
-      // Final poll to get completion state
       await pollState()
     } catch (e: any) {
       setIsFailed(true)
@@ -176,18 +172,18 @@ export function InstallPage() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold">安装 OpenClaw</h1>
-            <p className="text-muted-foreground">通过 Docker 一键安装 OpenClaw 服务</p>
+            <p className="text-muted-foreground">一键安装 OpenClaw CLI</p>
           </div>
         </div>
 
         {/* Prerequisites Info */}
         {!isInstalling && !isCompleted && !isFailed && (
           <Alert>
-            <Container className="h-4 w-4" />
-            <AlertTitle>安装前提</AlertTitle>
+            <Terminal className="h-4 w-4" />
+            <AlertTitle>安装说明</AlertTitle>
             <AlertDescription>
-              安装 OpenClaw 需要你的电脑已安装 Docker Desktop 并确保 Docker 正在运行。
-              安装完成后，OpenClaw 将在 http://localhost:3000 上运行，默认账号 root，密码 123456。
+              安装过程将自动下载并安装 OpenClaw CLI。安装完成后，可以通过命令行使用 openclaw 命令。
+              当前版本支持 macOS 和 Linux 系统。
             </AlertDescription>
           </Alert>
         )}
@@ -205,7 +201,7 @@ export function InstallPage() {
                     ? "安装过程中出现错误"
                     : isInstalling
                     ? "正在安装中，请稍候..."
-                    : "准备开始安装 OpenClaw (Docker)"}
+                    : "准备开始安装 OpenClaw"}
                 </CardDescription>
               </div>
               {isInstalling && (
@@ -266,8 +262,7 @@ export function InstallPage() {
                 <CheckCircle2 className="h-4 w-4" />
                 <AlertTitle>安装成功</AlertTitle>
                 <AlertDescription>
-                  OpenClaw 已成功安装并启动。你可以通过 http://localhost:3000 访问管理界面。
-                  默认账号: root / 123456，请登录后立即修改密码。
+                  OpenClaw 已成功安装。你可以在终端中使用 openclaw 命令。
                 </AlertDescription>
               </Alert>
             )}
@@ -293,12 +288,10 @@ export function InstallPage() {
                 </Button>
               )}
               {isFailed && (
-                <>
-                  <Button onClick={startInstallation} variant="default" className="flex-1">
-                    <RotateCcw className="w-4 h-4 mr-2" />
-                    重试
-                  </Button>
-                </>
+                <Button onClick={startInstallation} variant="default" className="flex-1">
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  重试
+                </Button>
               )}
             </div>
           </CardContent>

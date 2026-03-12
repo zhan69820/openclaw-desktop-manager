@@ -66,15 +66,10 @@ interface AppState {
 }
 
 const defaultInstallSteps: InstallStep[] = [
-  { id: "preflight_checking", name: "检查系统环境", description: "正在确认你的电脑是否具备安装 OpenClaw 所需的运行环境", status: "pending", progress: 0 },
-  { id: "privilege_resolving", name: "检查权限", description: "正在确认安装所需的权限", status: "pending", progress: 0 },
-  { id: "runtime_preparing", name: "准备运行环境", description: "正在准备 OpenClaw 运行环境", status: "pending", progress: 0 },
-  { id: "downloading", name: "下载 OpenClaw", description: "正在下载 OpenClaw 安装文件", status: "pending", progress: 0 },
-  { id: "installing", name: "安装 OpenClaw", description: "正在安装 OpenClaw", status: "pending", progress: 0 },
-  { id: "workspace_initializing", name: "创建工作区", description: "正在创建 OpenClaw 工作区", status: "pending", progress: 0 },
-  { id: "config_generating", name: "生成默认配置", description: "正在生成可直接使用的默认配置", status: "pending", progress: 0 },
-  { id: "service_starting", name: "启动服务", description: "正在启动 OpenClaw 服务", status: "pending", progress: 0 },
-  { id: "verifying", name: "验证安装结果", description: "正在验证 OpenClaw 是否已经可以正常启动", status: "pending", progress: 0 },
+  { id: "preflight_checking", name: "检查系统环境", description: "正在检查操作系统和网络连接", status: "pending", progress: 0 },
+  { id: "running_official_installer", name: "安装 OpenClaw CLI", description: "正在下载并安装 OpenClaw 官方安装脚本", status: "pending", progress: 0 },
+  { id: "verifying_cli", name: "验证 OpenClaw CLI", description: "正在验证 OpenClaw CLI 是否安装成功", status: "pending", progress: 0 },
+  { id: "verifying_status", name: "验证 OpenClaw 状态", description: "正在检查 OpenClaw 运行状态", status: "pending", progress: 0 },
 ]
 
 const defaultSettings: AppSettings = {

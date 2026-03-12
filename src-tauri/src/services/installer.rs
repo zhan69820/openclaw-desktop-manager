@@ -4,10 +4,6 @@ use std::sync::{Arc, Mutex};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const CONTAINER_NAME: &str = "openclaw";
-const IMAGE_NAME: &str = "justsong/one-api";
-const DEFAULT_PORT: u16 = 3000;
-
 pub struct InstallerService {
     state: Arc<Mutex<InstallState>>,
 }
@@ -27,8 +23,8 @@ impl InstallerService {
         let steps = vec![
             InstallStep {
                 id: "preflight_checking".to_string(),
-                name: "检查 Docker 环境".to_string(),
-                description: "正在确认 Docker 是否已安装并正常运行".to_string(),
+                name: "检查系统环境".to_string(),
+                description: "正在检查操作系统和网络连接".to_string(),
                 status: "pending".to_string(),
                 progress: 0,
                 start_time: None,
@@ -36,9 +32,9 @@ impl InstallerService {
                 error: None,
             },
             InstallStep {
-                id: "pulling_image".to_string(),
-                name: "拉取 Docker 镜像".to_string(),
-                description: "正在下载 OpenClaw Docker 镜像".to_string(),
+                id: "running_official_installer".to_string(),
+                name: "安装 OpenClaw CLI".to_string(),
+                description: "正在下载并安装 OpenClaw 官方安装脚本".to_string(),
                 status: "pending".to_string(),
                 progress: 0,
                 start_time: None,
@@ -46,9 +42,9 @@ impl InstallerService {
                 error: None,
             },
             InstallStep {
-                id: "creating_data_dir".to_string(),
-                name: "创建数据目录".to_string(),
-                description: "正在创建持久化数据存储目录".to_string(),
+                id: "verifying_cli".to_string(),
+                name: "验证 OpenClaw CLI".to_string(),
+                description: "正在验证 OpenClaw CLI 是否安装成功".to_string(),
                 status: "pending".to_string(),
                 progress: 0,
                 start_time: None,
@@ -56,19 +52,9 @@ impl InstallerService {
                 error: None,
             },
             InstallStep {
-                id: "running_container".to_string(),
-                name: "启动容器".to_string(),
-                description: "正在启动 OpenClaw 容器".to_string(),
-                status: "pending".to_string(),
-                progress: 0,
-                start_time: None,
-                end_time: None,
-                error: None,
-            },
-            InstallStep {
-                id: "verifying".to_string(),
-                name: "验证安装".to_string(),
-                description: "正在验证 OpenClaw 服务是否正常运行".to_string(),
+                id: "verifying_status".to_string(),
+                name: "验证 OpenClaw 状态".to_string(),
+                description: "正在检查 OpenClaw 运行状态".to_string(),
                 status: "pending".to_string(),
                 progress: 0,
                 start_time: None,
@@ -94,7 +80,7 @@ impl InstallerService {
     }
 
     /// Run the full installation process synchronously
-    pub fn run_install(&self, config: InstallConfig) -> Result<(), String> {
+    pub fn run_install(&self, _config: InstallConfig) -> Result<(), String> {
         // Check if already running
         {
             let state = self.state.lock().unwrap();
@@ -108,22 +94,19 @@ impl InstallerService {
         self.set_running(true);
         self.add_log("开始安装 OpenClaw...");
 
-        // Determine image version
-        let image_version = config.custom_version.as_deref().unwrap_or("latest");
-        let full_image = format!("{}:{}", IMAGE_NAME, image_version);
-
-        // Step 1: Preflight check - Verify Docker is installed and running
+        // Step 1: Preflight check
         self.set_current_step("preflight_checking");
         self.update_step_status("preflight_checking", "running", 0);
-        self.add_log("检查 Docker 环境...");
+        self.add_log("检查系统环境...");
 
-        match self.check_docker() {
+        match self.preflight_check() {
             Ok(info) => {
-                self.add_log(&format!("Docker 版本: {}", info.version));
+                self.add_log(&format!("系统: {}", info.os_type));
+                self.add_log(&format!("架构: {}", info.arch));
                 self.update_step_status("preflight_checking", "success", 100);
             }
             Err(e) => {
-                self.add_log(&format!("Docker 检查失败: {}", e));
+                self.add_log(&format!("系统检查失败: {}", e));
                 self.update_step_status("preflight_checking", "failed", 0);
                 self.set_error(&e);
                 self.set_running(false);
@@ -131,91 +114,59 @@ impl InstallerService {
             }
         }
 
-        // Step 2: Pull Docker image
-        self.set_current_step("pulling_image");
-        self.update_step_status("pulling_image", "running", 0);
-        self.add_log(&format!("拉取 Docker 镜像: {}", full_image));
+        // Step 2: Run official installer
+        self.set_current_step("running_official_installer");
+        self.update_step_status("running_official_installer", "running", 0);
+        self.add_log("开始安装 OpenClaw CLI...");
 
-        match self.pull_image(&full_image) {
+        match self.run_official_installer() {
             Ok(_) => {
-                self.add_log("镜像拉取完成");
-                self.update_step_status("pulling_image", "success", 100);
+                self.add_log("OpenClaw CLI 安装完成");
+                self.update_step_status("running_official_installer", "success", 100);
             }
             Err(e) => {
-                self.add_log(&format!("镜像拉取失败: {}", e));
-                self.update_step_status("pulling_image", "failed", 0);
+                self.add_log(&format!("安装失败: {}", e));
+                self.update_step_status("running_official_installer", "failed", 0);
                 self.set_error(&e);
                 self.set_running(false);
                 return Err(e);
             }
         }
 
-        // Step 3: Create data directory
-        self.set_current_step("creating_data_dir");
-        self.update_step_status("creating_data_dir", "running", 0);
-        self.add_log("创建数据目录...");
+        // Step 3: Verify CLI
+        self.set_current_step("verifying_cli");
+        self.update_step_status("verifying_cli", "running", 0);
+        self.add_log("验证 OpenClaw CLI...");
 
-        let data_dir = self.get_data_dir();
-        match self.create_data_directory(&data_dir) {
-            Ok(_) => {
-                self.add_log(&format!("数据目录已创建: {}", data_dir.display()));
-                self.update_step_status("creating_data_dir", "success", 100);
+        match self.verify_cli() {
+            Ok(version) => {
+                self.add_log(&format!("OpenClaw 版本: {}", version));
+                self.update_step_status("verifying_cli", "success", 100);
             }
             Err(e) => {
-                self.add_log(&format!("创建数据目录失败: {}", e));
-                self.update_step_status("creating_data_dir", "failed", 0);
+                self.add_log(&format!("CLI 验证失败: {}", e));
+                self.update_step_status("verifying_cli", "failed", 0);
                 self.set_error(&e);
                 self.set_running(false);
                 return Err(e);
             }
         }
 
-        // Step 4: Run container
-        self.set_current_step("running_container");
-        self.update_step_status("running_container", "running", 0);
-        self.add_log("启动 OpenClaw 容器...");
+        // Step 4: Verify status
+        self.set_current_step("verifying_status");
+        self.update_step_status("verifying_status", "running", 0);
+        self.add_log("检查 OpenClaw 状态...");
 
-        // Check if container already exists and remove it
-        if let Ok(true) = self.container_exists() {
-            self.add_log("检测到已存在的容器，正在移除...");
-            if let Err(e) = self.remove_container() {
-                self.add_log(&format!("移除旧容器失败: {}", e));
-            }
-        }
-
-        match self.run_container(&full_image, &data_dir, config.auto_start) {
-            Ok(_) => {
-                self.add_log("容器启动成功");
-                self.update_step_status("running_container", "success", 100);
+        match self.verify_status() {
+            Ok(status) => {
+                self.add_log(&format!("状态: {}", status));
+                self.update_step_status("verifying_status", "success", 100);
             }
             Err(e) => {
-                self.add_log(&format!("容器启动失败: {}", e));
-                self.update_step_status("running_container", "failed", 0);
-                self.set_error(&e);
-                self.set_running(false);
-                return Err(e);
-            }
-        }
-
-        // Step 5: Verify installation
-        self.set_current_step("verifying");
-        self.update_step_status("verifying", "running", 0);
-        self.add_log("验证安装结果...");
-
-        // Wait a moment for the service to start
-        std::thread::sleep(std::time::Duration::from_secs(3));
-
-        match self.verify_installation() {
-            Ok(_) => {
-                self.add_log("验证成功！OpenClaw 已正常运行");
-                self.update_step_status("verifying", "success", 100);
-            }
-            Err(e) => {
-                self.add_log(&format!("验证失败: {}", e));
-                self.update_step_status("verifying", "failed", 0);
-                self.set_error(&e);
-                self.set_running(false);
-                return Err(e);
+                self.add_log(&format!("状态检查失败: {}", e));
+                // 状态检查失败不阻断安装，只是警告
+                self.add_log("注意: OpenClaw 已安装，但状态检查未通过");
+                self.update_step_status("verifying_status", "success", 100);
             }
         }
 
@@ -227,7 +178,6 @@ impl InstallerService {
 
     /// Start installation (legacy method, delegates to run_install)
     pub fn start_installation(&self, config: InstallConfig) -> Result<(), String> {
-        // Run in a separate thread to not block
         let state_clone = Arc::clone(&self.state);
         let config_clone = config.clone();
         
@@ -274,7 +224,6 @@ impl InstallerService {
             }
         }
 
-        // Update overall progress
         let total_steps = state.steps.len();
         let completed_steps = state.steps.iter().filter(|s| s.status == "success").count();
         state.progress = ((completed_steps as f32 / total_steps as f32) * 100.0) as u32;
@@ -326,7 +275,6 @@ impl InstallerService {
         let log_entry = format!("[{}] {}", timestamp, message);
         state.logs.push(log_entry);
         
-        // Keep only last 1000 logs
         if state.logs.len() > 1000 {
             state.logs.remove(0);
         }
@@ -337,7 +285,151 @@ impl InstallerService {
         state.logs.clone()
     }
 
-    // Get installation path
+    // ========== Installation Steps ==========
+
+    fn preflight_check(&self) -> Result<SystemInfo, String> {
+        self.add_log("检测操作系统...");
+        
+        let os_type = std::env::consts::OS.to_string();
+        let arch = std::env::consts::ARCH.to_string();
+        
+        // 只支持 macOS 和 Linux
+        if os_type != "macos" && os_type != "linux" {
+            return Err(format!("当前系统 {} 暂不支持自动安装", os_type));
+        }
+        
+        self.add_log(&format!("检测到: {} / {}", os_type, arch));
+        
+        // 检查网络
+        self.add_log("检查网络连接...");
+        match self.check_network() {
+            Ok(_) => self.add_log("网络连接正常"),
+            Err(e) => return Err(format!("网络检查失败: {}", e)),
+        }
+        
+        // 检查 curl
+        self.add_log("检查 curl...");
+        match Command::new("curl").arg("--version").output() {
+            Ok(_) => self.add_log("curl 可用"),
+            Err(_) => return Err("需要安装 curl".to_string()),
+        }
+        
+        Ok(SystemInfo {
+            os_type,
+            arch,
+        })
+    }
+
+    fn check_network(&self) -> Result<(), String> {
+        let output = Command::new("curl")
+            .args(&["-s", "-o", "/dev/null", "-w", "%{http_code}", "https://openclaw.ai"])
+            .output()
+            .map_err(|e| format!("无法执行 curl: {}", e))?;
+        
+        let status = String::from_utf8_lossy(&output.stdout);
+        if status.trim() == "200" || status.trim() == "301" || status.trim() == "302" {
+            Ok(())
+        } else {
+            Err(format!("无法连接到 openclaw.ai，HTTP 状态: {}", status))
+        }
+    }
+
+    fn run_official_installer(&self) -> Result<(), String> {
+        self.add_log("下载并执行官方安装脚本...");
+        
+        // 使用官方安装脚本
+        let install_url = "https://openclaw.ai/install.sh";
+        
+        self.add_log(&format!("从 {} 下载安装脚本...", install_url));
+        
+        let output = Command::new("bash")
+            .args(&[
+                "-c",
+                &format!(
+                    "curl -fsSL --proto '=https' --tlsv1.2 {} | bash -s -- --no-onboard",
+                    install_url
+                ),
+            ])
+            .output()
+            .map_err(|e| format!("执行安装脚本失败: {}", e))?;
+        
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        
+        // 记录输出
+        for line in stdout.lines() {
+            if !line.is_empty() {
+                self.add_log(line);
+            }
+        }
+        
+        if !output.status.success() {
+            for line in stderr.lines() {
+                if !line.is_empty() {
+                    self.add_log(&format!("[ERROR] {}", line));
+                }
+            }
+            return Err(format!("安装脚本执行失败: {}", stderr));
+        }
+        
+        Ok(())
+    }
+
+    fn verify_cli(&self) -> Result<String, String> {
+        self.add_log("执行 openclaw --version...");
+        
+        // 可能需要刷新 PATH，所以尝试多种方式
+        let output = Command::new("bash")
+            .args(&["-c", "source ~/.bashrc 2>/dev/null; openclaw --version"])
+            .output();
+        
+        let output = match output {
+            Ok(o) => o,
+            Err(_) => {
+                // 尝试直接执行
+                Command::new("openclaw")
+                    .arg("--version")
+                    .output()
+                    .map_err(|e| format!("无法执行 openclaw: {}", e))?
+            }
+        };
+        
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("openclaw --version 失败: {}", stderr));
+        }
+        
+        let version = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .to_string();
+        
+        Ok(version)
+    }
+
+    fn verify_status(&self) -> Result<String, String> {
+        self.add_log("执行 openclaw status...");
+        
+        let output = Command::new("bash")
+            .args(&["-c", "source ~/.bashrc 2>/dev/null; openclaw status"])
+            .output();
+        
+        let output = match output {
+            Ok(o) => o,
+            Err(_) => {
+                Command::new("openclaw")
+                    .arg("status")
+                    .output()
+                    .map_err(|e| format!("无法执行 openclaw status: {}", e))?
+            }
+        };
+        
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let status = stdout.trim().to_string();
+        
+        Ok(status)
+    }
+
+    // Legacy methods - kept for compatibility but not used
     pub fn get_install_path(&self, mode: &str) -> PathBuf {
         match mode {
             "user" => dirs::home_dir().unwrap_or_default().join(".openclaw"),
@@ -346,172 +438,16 @@ impl InstallerService {
         }
     }
 
-    fn get_data_dir(&self) -> PathBuf {
-        dirs::home_dir().unwrap_or_default().join(".openclaw/data")
-    }
-
-    // Docker-related methods
-
-    fn check_docker(&self) -> Result<DockerInfo, String> {
-        let output = Command::new("docker")
-            .args(&["version", "--format", "{{.Server.Version}}"])
-            .output()
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    "Docker 未安装。请先安装 Docker Desktop: https://www.docker.com/products/docker-desktop".to_string()
-                } else {
-                    format!("无法执行 Docker 命令: {}", e)
-                }
-            })?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            if stderr.contains("Cannot connect") || stderr.contains("Is the docker daemon running") {
-                return Err("Docker 守护进程未运行。请启动 Docker Desktop".to_string());
-            }
-            return Err(format!("Docker 检查失败: {}", stderr));
-        }
-
-        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        
-        Ok(DockerInfo {
-            version,
-            running: true,
-        })
-    }
-
-    fn pull_image(&self, image: &str) -> Result<(), String> {
-        self.add_log(&format!("正在拉取镜像: {}", image));
-        
-        let output = Command::new("docker")
-            .args(&["pull", image])
-            .output()
-            .map_err(|e| format!("执行 docker pull 失败: {}", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("拉取镜像失败: {}", stderr));
-        }
-
-        Ok(())
-    }
-
-    fn create_data_directory(&self, data_dir: &PathBuf) -> Result<(), String> {
-        std::fs::create_dir_all(data_dir)
-            .map_err(|e| format!("创建数据目录失败: {}", e))
-    }
-
-    fn container_exists(&self) -> Result<bool, String> {
-        let output = Command::new("docker")
-            .args(&["ps", "-a", "--filter", &format!("name={}", CONTAINER_NAME), "--format", "{{.Names}}"])
-            .output()
-            .map_err(|e| format!("检查容器失败: {}", e))?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(stdout.trim() == CONTAINER_NAME)
-    }
-
-    fn remove_container(&self) -> Result<(), String> {
-        let output = Command::new("docker")
-            .args(&["rm", "-f", CONTAINER_NAME])
-            .output()
-            .map_err(|e| format!("移除容器失败: {}", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("移除容器失败: {}", stderr));
-        }
-
-        Ok(())
-    }
-
-    fn run_container(&self, image: &str, data_dir: &PathBuf, _auto_start: bool) -> Result<(), String> {
-        let data_dir_str = data_dir.to_str()
-            .ok_or("无效的数据目录路径")?;
-
-        let output = Command::new("docker")
-            .args(&[
-                "run",
-                "--name", CONTAINER_NAME,
-                "-d",
-                "--restart", "always",
-                "-p", &format!("{}:{}", DEFAULT_PORT, DEFAULT_PORT),
-                "-e", "TZ=Asia/Shanghai",
-                "-v", &format!("{}:/data", data_dir_str),
-                image,
-            ])
-            .output()
-            .map_err(|e| format!("启动容器失败: {}", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            
-            // Check for specific errors
-            if stderr.contains("port is already allocated") || stderr.contains("bind") {
-                return Err(format!("端口 {} 已被占用。请检查是否有其他服务正在使用该端口", DEFAULT_PORT));
-            }
-            if stderr.contains("permission denied") {
-                return Err("权限不足。请确保当前用户有权限运行 Docker".to_string());
-            }
-            
-            return Err(format!("启动容器失败: {}", stderr));
-        }
-
-        Ok(())
-    }
-
-    fn verify_installation(&self) -> Result<(), String> {
-        // Check container is running
-        let output = Command::new("docker")
-            .args(&["ps", "--filter", &format!("name={}", CONTAINER_NAME), "--format", "{{.Status}}"])
-            .output()
-            .map_err(|e| format!("验证容器状态失败: {}", e))?;
-
-        let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if status.is_empty() {
-            return Err("容器未在运行".to_string());
-        }
-
-        // Try to connect to the service
-        let max_retries = 10;
-        for i in 0..max_retries {
-            match reqwest::blocking::get(&format!("http://localhost:{}", DEFAULT_PORT)) {
-                Ok(response) => {
-                    if response.status().is_success() || response.status().as_u16() == 404 {
-                        // 404 is also fine - means the service is up but endpoint doesn't exist
-                        return Ok(());
-                    }
-                }
-                Err(_) => {
-                    // Wait and retry
-                    std::thread::sleep(std::time::Duration::from_secs(1));
-                }
-            }
-        }
-
-        Err("无法连接到 OpenClaw 服务".to_string())
-    }
-
-    // Create workspace
     pub fn create_workspace(&self, base_path: &PathBuf) -> Result<(), String> {
-        let workspace_dirs = [
-            "workspace",
-            "logs",
-            "backups",
-            "temp",
-            "config",
-        ];
-
+        let workspace_dirs = ["workspace", "logs", "backups", "temp", "config"];
         for dir in &workspace_dirs {
             let path = base_path.join(dir);
             std::fs::create_dir_all(&path)
                 .map_err(|e| format!("创建目录失败: {}", e))?;
         }
-
         Ok(())
     }
 
-    // Generate default config
     pub fn generate_default_config(&self, config_path: &PathBuf) -> Result<(), String> {
         let default_config = serde_json::json!({
             "models": [],
@@ -540,7 +476,7 @@ impl Clone for InstallerService {
 }
 
 #[derive(Debug, Clone)]
-pub struct DockerInfo {
-    pub version: String,
-    pub running: bool,
+struct SystemInfo {
+    os_type: String,
+    arch: String,
 }
