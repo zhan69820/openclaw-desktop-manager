@@ -3,11 +3,10 @@ pub mod models;
 pub mod services;
 
 use commands::*;
-use std::sync::Arc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app_state = Arc::new(AppState::new());
+    let app_state = AppState::new();
 
     // 加载配置
     if let Err(e) = app_state.config_service.load_config() {
