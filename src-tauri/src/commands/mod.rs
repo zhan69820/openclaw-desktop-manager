@@ -65,7 +65,7 @@ pub fn start_installation(
 
 #[tauri::command]
 pub fn run_install(
-    state: State<'_, AppState>,
+    state: State<AppState>,
     config: InstallConfig,
 ) -> Result<(), String> {
     state.installer_service.run_install(config)
