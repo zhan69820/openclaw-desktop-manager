@@ -2,17 +2,11 @@
 export type InstallationState =
   | "idle"
   | "preflight_checking"
-  | "privilege_resolving"
-  | "runtime_preparing"
-  | "downloading"
-  | "installing"
-  | "workspace_initializing"
-  | "config_generating"
-  | "service_starting"
-  | "verifying"
+  | "running_official_installer"
+  | "verifying_cli"
+  | "verifying_status"
   | "completed"
   | "failed"
-  | "rollbacking"
 
 // 安装步骤
 export interface InstallStep {
