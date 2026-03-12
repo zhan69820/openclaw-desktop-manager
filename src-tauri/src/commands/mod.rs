@@ -44,12 +44,12 @@ pub fn check_environment(state: State<AppState>) -> Result<EnvironmentCheck, Str
 }
 
 #[tauri::command]
-pub async fn check_network(state: State<AppState>) -> Result<NetworkCheck, String> {
+pub async fn check_network(state: State<'_, AppState>) -> Result<NetworkCheck, String> {
     Ok(state.system_service.check_network().await)
 }
 
 #[tauri::command]
-pub async fn run_preflight_check(state: State<AppState>) -> Result<PreflightResult, String> {
+pub async fn run_preflight_check(state: State<'_, AppState>) -> Result<PreflightResult, String> {
     Ok(state.system_service.run_preflight_check().await)
 }
 
@@ -65,7 +65,7 @@ pub fn start_installation(
 
 #[tauri::command]
 pub async fn run_install(
-    state: State<AppState>,
+    state: State<'_, AppState>,
     config: InstallConfig,
 ) -> Result<(), String> {
     let installer = Arc::clone(&state.installer_service);
@@ -128,7 +128,7 @@ pub fn docker_logs(state: State<AppState>, lines: u32) -> Result<Vec<String>, St
 }
 
 #[tauri::command]
-pub async fn docker_health(state: State<AppState>) -> Result<bool, String> {
+pub async fn docker_health(state: State<'_, AppState>) -> Result<bool, String> {
     state.docker_service.check_health().await
 }
 
@@ -197,7 +197,7 @@ pub fn update_settings(state: State<AppState>, settings: AppSettings) -> Result<
 // ========== 健康检查命令 ==========
 
 #[tauri::command]
-pub async fn run_health_check(state: State<AppState>) -> Result<HealthCheckResult, String> {
+pub async fn run_health_check(state: State<'_, AppState>) -> Result<HealthCheckResult, String> {
     Ok(state.health_service.run_health_check().await)
 }
 
@@ -207,7 +207,7 @@ pub fn get_last_health_result(state: State<AppState>) -> Result<Option<HealthChe
 }
 
 #[tauri::command]
-pub async fn auto_fix(state: State<AppState>) -> Result<Vec<(String, Result<(), String>)>, String> {
+pub async fn auto_fix(state: State<'_, AppState>) -> Result<Vec<(String, Result<(), String>)>, String> {
     Ok(state.health_service.auto_fix().await)
 }
 
